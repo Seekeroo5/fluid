@@ -1,0 +1,16 @@
+{
+  "name": "voxel-airplane-asset",
+  "version": "1.0.0",
+  "description": "Hostable editable Three.js voxel aircraft asset pack.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0"
+  },
+  "dependencies": {
+    "three": "^0.160.0",
+    "vite": "^5.0.0"
+  },
+  "devDependencies": {}
+}

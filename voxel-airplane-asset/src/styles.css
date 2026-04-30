@@ -1,0 +1,142 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  color: #eef6ff;
+  font-family: "Trebuchet MS", Verdana, sans-serif;
+  background:
+    radial-gradient(circle at 50% 20%, rgba(129, 214, 255, 0.22), transparent 34%),
+    linear-gradient(180deg, #172635 0%, #20394a 48%, #314935 100%);
+}
+
+canvas {
+  display: block;
+}
+
+.editor {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  width: min(320px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  padding: 14px;
+  overflow: auto;
+  background: rgba(15, 24, 32, 0.86);
+  border: 1px solid rgba(180, 220, 240, 0.28);
+  border-radius: 8px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(14px);
+}
+
+.editor h1 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.editor-section {
+  padding-top: 12px;
+  margin-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.editor-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 34px;
+  font-size: 13px;
+}
+
+.editor-row + .editor-row {
+  margin-top: 8px;
+}
+
+.editor label {
+  color: rgba(238, 246, 255, 0.9);
+}
+
+.editor select,
+.editor button,
+.editor input[type="range"] {
+  width: 150px;
+}
+
+.editor select,
+.editor button {
+  min-height: 32px;
+  color: #eef6ff;
+  background: #263a48;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 6px;
+}
+
+.editor button {
+  width: 100%;
+  margin-top: 12px;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.editor input[type="color"] {
+  width: 44px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.editor input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+}
+
+.hud-chip {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  padding: 9px 12px;
+  color: rgba(238, 246, 255, 0.88);
+  font-size: 13px;
+  background: rgba(15, 24, 32, 0.72);
+  border: 1px solid rgba(180, 220, 240, 0.22);
+  border-radius: 999px;
+}
+
+@media (max-width: 720px) {
+  .editor {
+    top: 10px;
+    left: 10px;
+    width: calc(100vw - 20px);
+    max-height: 46vh;
+    padding: 12px;
+  }
+
+  .editor-row {
+    grid-template-columns: 1fr 120px;
+  }
+
+  .editor select,
+  .editor button,
+  .editor input[type="range"] {
+    width: 120px;
+  }
+
+  .hud-chip {
+    right: 10px;
+    bottom: 10px;
+    font-size: 12px;
+  }
+}

@@ -4,6 +4,7 @@ const aircraftLabels = {
   cyberpunk: 'Cyberpunk Aircraft',
   steampunk: 'Steampunk Aircraft',
   solarpunk: 'Solarpunk Aircraft',
+  biopunk: 'Biopunk Aircraft',
 };
 
 function colorToHex(color) {

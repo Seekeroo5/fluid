@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cartoon Explosion Lab</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <main class="lab-shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Isolated Audio Prototype</p>
+          <h1>Cartoon Missile Impact Lab</h1>
+          <p>
+            Design a cheerful, gamey explosion with focused controls, preview it instantly, and export the exact
+            sound as mono WAV plus a reusable preset.
+          </p>
+        </div>
+        <div class="hero-actions">
+          <a class="pill-link" href="./audio/cartoon-explosion.wav">Open Current WAV</a>
+          <a class="pill-link" href="./presets/cartoon-explosion.preset.json">Open Current Preset</a>
+        </div>
+      </section>
+
+      <section class="lab-grid">
+        <article class="panel">
+          <h2>Focused Controls</h2>
+          <p class="panel-copy">
+            This surface is intentionally opinionated. The controls stay in the cheerful arcade range instead of letting
+            the sound drift into a heavy realistic blast.
+          </p>
+          <div id="controls" class="controls-grid"></div>
+          <div class="action-cluster">
+            <button id="randomize-sound" class="action-button" type="button">Nudge Variant</button>
+            <button id="reset-sound" class="action-button" type="button">Reset</button>
+            <label class="file-button" for="import-preset">Load Preset</label>
+            <input id="import-preset" type="file" accept=".json,application/json" hidden />
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="preview-top">
+            <div>
+              <h2>Preview and Export</h2>
+              <p class="panel-copy">Preview the exact render, inspect the waveform, then export WAV or preset JSON.</p>
+            </div>
+            <div class="status-badge">
+              <span class="status-dot" aria-hidden="true"></span>
+              <span id="audio-status-label">Click Preview to unlock audio</span>
+            </div>
+          </div>
+
+          <div class="wave-card">
+            <canvas id="waveform" width="880" height="240"></canvas>
+          </div>
+
+          <div class="stats-grid">
+            <div class="stat-card">
+              <span>Duration</span>
+              <strong id="duration-stat">0.000s</strong>
+            </div>
+            <div class="stat-card">
+              <span>Peak</span>
+              <strong id="peak-stat">0.00</strong>
+            </div>
+            <div class="stat-card">
+              <span>Flavor</span>
+              <strong id="flavor-stat">Spark burst</strong>
+            </div>
+          </div>
+
+          <div class="action-cluster">
+            <button id="preview-current" class="action-button primary" type="button">Preview Current</button>
+            <button id="preview-default" class="action-button" type="button">A/B Default</button>
+            <button id="export-wav" class="action-button" type="button">Export WAV</button>
+            <button id="export-preset" class="action-button" type="button">Save Preset</button>
+          </div>
+
+          <pre id="preset-json" class="code-block"></pre>
+          <p class="footnote">
+            The runtime target is mono 48 kHz WAV so the same sound can be reused as mild positional audio in Three.js.
+          </p>
+        </article>
+      </section>
+
+      <section class="panel panel-secondary">
+        <h2>Runtime Integration References</h2>
+        <p class="panel-copy">
+          These files are examples only. They stay isolated in this folder and show how the baked sound would be hooked
+          into other Three.js games without editing them here.
+        </p>
+        <div class="reference-links">
+          <a class="reference-link" href="./src/runtime/ThreeGameAudio.js">Generic Three.js Audio Runtime</a>
+          <a class="reference-link" href="./examples/fluid-boids-hook.js">Fluid Boids Hook Example</a>
+          <a class="reference-link" href="./examples/voxel-plane-hook.js">Voxel Plane Hook Example</a>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./src/sound-lab.js"></script>
+  </body>
+</html>

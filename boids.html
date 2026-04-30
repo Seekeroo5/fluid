@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>True Eulerian Fluid Boids - WebGPU</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
+        canvas { display: block; }
+        #overlay { position: absolute; top: 20px; left: 20px; text-shadow: 0 0 10px #0ff; z-index: 10; pointer-events: none;}
+        #seq-status { margin-top: 10px; font-weight: bold; color: #0f0; }
+    </style>
+</head>
+<body>
+    <div id="overlay">
+        <h2>TRUE 3D FLUID COMBAT</h2>
+        <div id="seq-status">SEQUENCE: IDLE</div>
+    </div>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.170.0/build/three.webgpu.js"
+        }
+    }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { pass, color, vec3, vec4, float, compute, storage, wgslFn, instanceIndex, time, positionLocal, uniform } from 'three';
+
+        // 1. INITIALIZATION 
+        const renderer = new THREE.WebGPURenderer({ antialias: true, forceWebGL: false });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        document.body.appendChild(renderer.domElement);
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 30, 80);
+
+        // 2. FLUID GRID SETUP
+        const N = 32;
+        const N3 = N * N * N;
+        const simArrA = new Float32Array(N3 * 4);
+        const simArrB = new Float32Array(N3 * 4);
+        const divArr = new Float32Array(N3);
+        const presArrA = new Float32Array(N3);
+        const presArrB = new Float32Array(N3);
+        
+        const simAStr = storage(new THREE.InstancedBufferAttribute(simArrA, 4), 'vec4', N3);
+        const simBStr = storage(new THREE.InstancedBufferAttribute(simArrB, 4), 'vec4', N3);
+        const divStr = storage(new THREE.InstancedBufferAttribute(divArr, 1), 'f32', N3);
+        const presAStr = storage(new THREE.InstancedBufferAttribute(presArrA, 1), 'f32', N3);
+        const presBStr = storage(new THREE.InstancedBufferAttribute(presArrB, 1), 'f32', N3);
+
+        const wgslHelpers = `
+            const N: i32 = 32i;
+            fn IX(x: i32, y: i32, z: i32) -> u32 {
+                let cx = clamp(x, 0, N - 1i);
+                let cy = clamp(y, 0, N - 1i);
+                let cz = clamp(z, 0, N - 1i);
+                return u32(cx) + u32(cy) * u32(N) + u32(cz) * u32(N * N);
+            }
+            
+            fn sampleBuf(buf: ptr<storage, vec4<f32>, read_write>, x: f32, y: f32, z: f32) -> vec4<f32> {
+                let iX0 = i32(floor(x)); let iX1 = iX0 + 1i;
+                let iY0 = i32(floor(y)); let iY1 = iY0 + 1i;
+                let iZ0 = i32(floor(z)); let iZ1 = iZ0 + 1i;
+                let tx = fract(x); let ty = fract(y); let tz = fract(z);
+                let v000 = buf[IX(iX0, iY0, iZ0)]; let v100 = buf[IX(iX1, iY0, iZ0)];
+                let v010 = buf[IX(iX0, iY1, iZ0)]; let v110 = buf[IX(iX1, iY1, iZ0)];
+                let v001 = buf[IX(iX0, iY0, iZ1)]; let v101 = buf[IX(iX1, iY0, iZ1)];
+                let v011 = buf[IX(iX0, iY1, iZ1)]; let v111 = buf[IX(iX1, iY1, iZ1)];
+                let vx00 = mix(v000, v100, tx); let vx10 = mix(v010, v110, tx);
+                let vx01 = mix(v001, v101, tx); let vx11 = mix(v011, v111, tx);
+                let vxy0 = mix(vx00, vx10, ty); let vxy1 = mix(vx01, vx11, ty);
+                return mix(vxy0, vxy1, tz);
+            }
+        `;
+
+        const dtBase = uniform(0.1);
+
+        // -- INJECT --
+        const boidPosArray = new Float32Array(32 * 4); // 32 boids xyz
+        const boidVelArray = new Float32Array(32 * 4);
+        const boidPosStr = storage(new THREE.InstancedBufferAttribute(boidPosArray, 4), 'vec4', 32);
+        const boidVelStr = storage(new THREE.InstancedBufferAttribute(boidVelArray, 4), 'vec4', 32);
+        
+        const explCenter = uniform(vec3(0, -999, 0));
+        const explStrength = uniform(float(0));
+
+        const fnInject = wgslFn(`
+            ${wgslHelpers}
+            fn run(simA: ptr<storage, vec4<f32>, read_write>, bp: ptr<storage, vec4<f32>, read_write>, bv: ptr<storage, vec4<f32>, read_write>, ex: vec3<f32>, estr: f32) -> void {
+                let idx = instanceIndex;
+                let x = f32(idx % u32(N)); let y = f32((idx / u32(N)) % u32(N)); let z = f32(idx / u32(N * N));
+                let worldPos = vec3<f32>(x, y, z) / f32(N) * 100.0 - vec3<f32>(50.0);
+                
+                var force = vec3<f32>(0.0);
+                var den = 0.0;
+                
+                for(var i=0u; i<32u; i++) {
+                    let dist = distance(worldPos, bp[i].xyz);
+                    if(dist < 5.0) {
+                        let eff = (5.0 - dist) / 5.0;
+                        force += bv[i].xyz * eff * 1.5;
+                        den += eff * 0.4;
+                    }
+                }
+                
+                let edist = distance(worldPos, ex);
+                if(estr > 0.0 && edist < 20.0) {
+                    let eff = (20.0 - edist) / 20.0;
+                    force += normalize(worldPos - ex) * eff * estr * 20.0;
+                    den += eff * estr * 10.0;
+                }
+                
+                var data = simA[idx];
+                data.x += force.x; data.y += force.y; data.z += force.z; data.w += den;
+                simA[idx] = data;
+            }
+        `);
+
+        // -- ADVECT --
+        const fnAdvect = wgslFn(`
+            ${wgslHelpers}
+            fn run(simA: ptr<storage, vec4<f32>, read_write>, simB: ptr<storage, vec4<f32>, read_write>, dt: f32) -> void {
+                let idx = instanceIndex;
+                let x = i32(idx % u32(N)); let y = i32((idx / u32(N)) % u32(N)); let z = i32(idx / u32(N * N));
+                let vel = simA[idx].xyz;
+                let px = f32(x) - vel.x * dt; let py = f32(y) - vel.y * dt; let pz = f32(z) - vel.z * dt;
+                
+                var advected = sampleBuf(simA, px, py, pz);
+                advected.w *= 0.99; // smoke fades
+                simB[idx] = advected;
+            }
+        `);
+
+        // -- DIVERGENCE --
+        const fnDiv = wgslFn(`
+            ${wgslHelpers}
+            fn run(simB: ptr<storage, vec4<f32>, read_write>, div: ptr<storage, f32, read_write>, presA: ptr<storage, f32, read_write>) -> void {
+                let idx = instanceIndex;
+                let x = i32(idx % u32(N)); let y = i32((idx / u32(N)) % u32(N)); let z = i32(idx / u32(N * N));
+                let vx1 = simB[IX(x+1i,y,z)].x; let vx0 = simB[IX(x-1i,y,z)].x;
+                let vy1 = simB[IX(x,y+1i,z)].y; let vy0 = simB[IX(x,y-1i,z)].y;
+                let vz1 = simB[IX(x,y,z+1i)].z; let vz0 = simB[IX(x,y,z-1i)].z;
+                
+                div[idx] = -0.5 * ((vx1 - vx0) + (vy1 - vy0) + (vz1 - vz0));
+                presA[idx] = 0.0;
+            }
+        `);
+
+        // -- JACOBI --
+        const fnJacobi = wgslFn(`
+            ${wgslHelpers}
+            fn run(pIn: ptr<storage, f32, read_write>, pOut: ptr<storage, f32, read_write>, div: ptr<storage, f32, read_write>) -> void {
+                let idx = instanceIndex;
+                let x = i32(idx % u32(N)); let y = i32((idx / u32(N)) % u32(N)); let z = i32(idx / u32(N * N));
+                let px1 = pIn[IX(x+1i,y,z)]; let px0 = pIn[IX(x-1i,y,z)];
+                let py1 = pIn[IX(x,y+1i,z)]; let py0 = pIn[IX(x,y-1i,z)];
+                let pz1 = pIn[IX(x,y,z+1i)]; let pz0 = pIn[IX(x,y,z-1i)];
+                
+                pOut[idx] = (div[idx] + px1 + px0 + py1 + py0 + pz1 + pz0) / 6.0;
+            }
+        `);
+
+        // -- GRADIENT --
+        const fnGrad = wgslFn(`
+            ${wgslHelpers}
+            fn run(presA: ptr<storage, f32, read_write>, simB: ptr<storage, vec4<f32>, read_write>, simA: ptr<storage, vec4<f32>, read_write>) -> void {
+                let idx = instanceIndex;
+                let x = i32(idx % u32(N)); let y = i32((idx / u32(N)) % u32(N)); let z = i32(idx / u32(N * N));
+                let px1 = presA[IX(x+1i,y,z)]; let px0 = presA[IX(x-1i,y,z)];
+                let py1 = presA[IX(x,y+1i,z)]; let py0 = presA[IX(x,y-1i,z)];
+                let pz1 = presA[IX(x,y,z+1i)]; let pz0 = presA[IX(x,y,z-1i)];
+                
+                var dat = simB[idx];
+                dat.x -= (px1 - px0) * 0.5;
+                dat.y -= (py1 - py0) * 0.5;
+                dat.z -= (pz1 - pz0) * 0.5;
+                
+                // Keep bounding box limits
+                if (x==0i || x==N-1i) { dat.x = 0.0; }
+                if (y==0i || y==N-1i) { dat.y = 0.0; }
+                if (z==0i || z==N-1i) { dat.z = 0.0; }
+                
+                simA[idx] = dat;
+            }
+        `);
+
+        const psInject = fnInject({ simA: simAStr, bp: boidPosStr, bv: boidVelStr, ex: explCenter, estr: explStrength }).compute(N3);
+        const psAdvect = fnAdvect({ simA: simAStr, simB: simBStr, dt: dtBase }).compute(N3);
+        const psDiv = fnDiv({ simB: simBStr, div: divStr, presA: presAStr }).compute(N3);
+        const psJacobiAB = fnJacobi({ pIn: presAStr, pOut: presBStr, div: divStr }).compute(N3);
+        const psJacobiBA = fnJacobi({ pIn: presBStr, pOut: presAStr, div: divStr }).compute(N3);
+        const psGrad = fnGrad({ presA: presAStr, simB: simBStr, simA: simAStr }).compute(N3);
+
+        // 3. RENDER THE FLUID VOXELS
+        const boxGeo = new THREE.BoxGeometry(3.2, 3.2, 3.2); // 100/32 = 3.125
+        const boxMat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+
+        // Voxel Position logic
+        const pX = float(instanceIndex).remainder(N).div(N).mul(100.0).sub(50.0);
+        const pY = float(instanceIndex).div(N).remainder(N).div(N).mul(100.0).sub(50.0);
+        const pZ = float(instanceIndex).div(N * N).div(N).mul(100.0).sub(50.0);
+        boxMat.positionNode = positionLocal.add(vec3(pX, pY, pZ));
+
+        // Color / Opacity
+        const val = simAStr.element(instanceIndex).w;
+        boxMat.opacityNode = val.mul(0.15);
+        boxMat.colorNode = color(0xff5511).mix(color(0xaaaaaa), val.clamp(0.0, 1.0));
+
+        const fluidMesh = new THREE.InstancedMesh(boxGeo, boxMat, N3);
+        scene.add(fluidMesh);
+
+
+        // 4. BOIDS & MISSILES SYSTEM
+        const boids = [];
+        for(let i=0; i<32; i++) {
+            const m = new THREE.Mesh(new THREE.ConeGeometry(0.5, 2, 8), new THREE.MeshBasicMaterial({color: 0x00ffff}));
+            m.position.set((Math.random()-0.5)*80, (Math.random()-0.5)*80, (Math.random()-0.5)*80);
+            scene.add(m);
+            boids.push({ mesh: m, v: new THREE.Vector3(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5).normalize() });
+        }
+        
+        let missiles = [];
+        
+        const seqStatusEl = document.getElementById('seq-status');
+        const seq = {
+            state: 0, startT: performance.now(),
+            update: function(t) {
+                if(this.state === 0 && t > 5) {
+                    this.state = 1; seqStatusEl.innerText="SEQUENCE: MISSILES FIRE";
+                    for(let i=0;i<3;i++) {
+                        let m = new THREE.Mesh(new THREE.SphereGeometry(0.5), new THREE.MeshBasicMaterial({color:0xff0000}));
+                        m.position.copy(camera.position);
+                        scene.add(m);
+                        missiles.push({m: m, t: boids[i].mesh, v: new THREE.Vector3()});
+                    }
+                }
+                if(this.state === 1 && t > 8) {
+                    this.state = 2; seqStatusEl.innerText="SEQUENCE: IMPACT";
+                    explCenter.value.copy(missiles[0].m.position);
+                    explStrength.value = 1.0;
+                    for(let m of missiles) scene.remove(m.m);
+                    missiles = [];
+                }
+                if(this.state === 2 && t > 12) {
+                    this.state = 0; this.startT = performance.now(); seqStatusEl.innerText="SEQUENCE: IDLE";
+                }
+            }
+        };
+
+        // 5. RENDER LOOP
+        function animate() {
+            requestAnimationFrame(animate);
+            let t = (performance.now() - seq.startT) / 1000.0;
+            seq.update(t);
+
+            // CPU Boids
+            let center = new THREE.Vector3();
+            for(let i=0; i<32; i++) {
+                let b = boids[i];
+                let sep = new THREE.Vector3(); let ali = new THREE.Vector3(); let coh = new THREE.Vector3(); let c=0;
+                for(let j=0; j<32; j++) {
+                    if(i===j) continue;
+                    let od = b.mesh.position.distanceTo(boids[j].mesh.position);
+                    if(od < 10) {
+                        sep.add(b.mesh.position.clone().sub(boids[j].mesh.position).normalize().divideScalar(od||1));
+                        ali.add(boids[j].v); coh.add(boids[j].mesh.position); c++;
+                    }
+                }
+                if(c>0) { ali.divideScalar(c).normalize(); coh.divideScalar(c).sub(b.mesh.position).normalize(); }
+                
+                let bnd = new THREE.Vector3();
+                if(b.mesh.position.x > 40) bnd.x=-1; if(b.mesh.position.x < -40) bnd.x=1;
+                if(b.mesh.position.y > 40) bnd.y=-1; if(b.mesh.position.y < -40) bnd.y=1;
+                if(b.mesh.position.z > 40) bnd.z=-1; if(b.mesh.position.z < -40) bnd.z=1;
+
+                b.v.add(sep.multiplyScalar(0.04)).add(ali.multiplyScalar(0.01)).add(coh.multiplyScalar(0.01)).add(bnd.multiplyScalar(0.05)).normalize();
+                b.mesh.position.add(b.v.clone().multiplyScalar(0.5));
+                b.mesh.lookAt(b.mesh.position.clone().add(b.v));
+                center.add(b.mesh.position);
+
+                boidPosArray[i*4+0] = b.mesh.position.x; boidPosArray[i*4+1] = b.mesh.position.y; boidPosArray[i*4+2] = b.mesh.position.z;
+                boidVelArray[i*4+0] = b.v.x; boidVelArray[i*4+1] = b.v.y; boidVelArray[i*4+2] = b.v.z;
+            }
+            center.divideScalar(32);
+
+            for (let m of missiles) {
+                let d = m.t.position.clone().sub(m.m.position).normalize();
+                m.v.lerp(d.multiplyScalar(1.5), 0.1);
+                m.m.position.add(m.v);
+            }
+
+            if(explStrength.value > 0) explStrength.value *= 0.9;
+
+            boidPosStr.buffer.needsUpdate = true;
+            boidVelStr.buffer.needsUpdate = true;
+
+            // Compute Pipeline
+            renderer.compute(psInject);
+            renderer.compute(psAdvect);
+            renderer.compute(psDiv);
+            for(let k=0; k<10; k++) { renderer.compute(psJacobiAB); renderer.compute(psJacobiBA); }
+            renderer.compute(psGrad);
+
+            camera.position.x = Math.sin(t * 0.2) * 80;
+            camera.position.z = Math.cos(t * 0.2) * 80;
+            camera.lookAt(center);
+
+            renderer.render(scene, camera);
+        }
+        animate();
+        
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

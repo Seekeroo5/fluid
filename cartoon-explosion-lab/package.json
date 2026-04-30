@@ -1,0 +1,8 @@
+{
+  "name": "cartoon-explosion-lab",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "export:default": "node ./scripts/export-default-wav.mjs"
+  }
+}

@@ -1,7 +1,11 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { createBiopunkAircraft } from './aircraft/biopunkAircraft.js';
+import { createCyberpunkAircraft } from './aircraft/cyberpunkAircraft.js';
 import { createSciFiAircraft } from './aircraft/sciFiAircraft.js';
 import { createMythicAircraft } from './aircraft/mythicAircraft.js';
+import { createSolarpunkAircraft } from './aircraft/solarpunkAircraft.js';
+import { createSteampunkAircraft } from './aircraft/steampunkAircraft.js';
 import { createEditor } from './editor.js';
 import './styles.css';
 
@@ -68,6 +72,10 @@ const state = {
 const creators = {
   sciFi: createSciFiAircraft,
   mythic: createMythicAircraft,
+  cyberpunk: createCyberpunkAircraft,
+  steampunk: createSteampunkAircraft,
+  solarpunk: createSolarpunkAircraft,
+  biopunk: createBiopunkAircraft,
 };
 
 let activeAircraft = null;

@@ -4,6 +4,10 @@ Standalone hostable Three.js project containing two separate editable voxel airc
 
 - `Sci-Fi Aircraft`: hard-surface block jet with swept wings, armor panels, glowing thrusters, pods, and antenna details.
 - `Mythical Aircraft`: celestial bird-like craft with feathered voxel wings, crystals, rune blocks, landing skids, and a rotating halo.
+- `Cyberpunk Aircraft`: dark city-runner with neon strips, duct fans, data spines, and side billboard panels.
+- `Steampunk Aircraft`: brass-and-canvas boiler plane with propeller, struts, smokestacks, and landing gear.
+- `Solarpunk Aircraft`: bright eco-plane with leaf wings, solar panels, vine rails, garden pods, and seed thrusters.
+- `Biopunk Aircraft`: living bone-and-membrane craft with ribs, vein glow, eye cockpit, organ pods, and stinger tail.
 
 ## Run
 
@@ -24,6 +28,10 @@ The static site is emitted to `dist/`.
 
 - `src/aircraft/sciFiAircraft.js` defines the sci-fi asset.
 - `src/aircraft/mythicAircraft.js` defines the mythical asset.
+- `src/aircraft/cyberpunkAircraft.js` defines the cyberpunk asset.
+- `src/aircraft/steampunkAircraft.js` defines the steampunk asset.
+- `src/aircraft/solarpunkAircraft.js` defines the solarpunk asset.
+- `src/aircraft/biopunkAircraft.js` defines the biopunk asset.
 - `src/aircraft/voxelHelpers.js` contains shared box/material helpers.
 - `src/editor.js` creates the browser controls.
 - `src/main.js` creates the Three.js viewer.
